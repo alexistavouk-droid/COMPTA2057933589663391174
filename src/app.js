@@ -63,56 +63,7 @@ const accOptions = (sel, re) => db.accounts.filter(a => !re || re.test(a.num)).m
 
 /* ---------- Vues ---------- */
 const views = {
-  dashboard() {
-    const from = yearStart(), inc = L.income(db, from, today());
-    const bal = L.balance(db);
-    const solde = acc => (bal.find(b => b.acc === acc) || { solde: 0 }).solde;
-    const open = k => db.docs.filter(d => d.kind === k && d.status === 'ISSUED');
-    const due = k => open(k).reduce((s, d) => s + (d.totals.ttc - d.paid) * (d.type === 'CREDIT' ? -1 : 1), 0);
-    const late = open('SALE').filter(d => d.due && d.due < today());
-    const marge = db.docs.filter(d => d.kind === 'SALE' && d.type !== 'QUOTE' && d.status !== 'DRAFT')
-      .reduce((s, d) => s + (d.type === 'CREDIT' ? -1 : 1) * d.lines.reduce((m, l) => m + L.lineTotals(l).ht - Math.round(l.qty * (l.cost || 0)), 0), 0);
-    const stockVal = db.products.filter(p => p.type === 'GOODS').reduce((s, p) => s + Math.round(Math.max(p.stock, 0) * p.cost), 0);
-    const C = window.Charts, year = today().slice(0, 4), mo = L.monthly(db, year), cur = +today().slice(5, 7) - 1;
-    const treso = solde('512000') + solde('530000');
-    const lowStock = db.products.filter(p => p.type === 'GOODS' && p.stock <= (p.min || 0));
-    const chargesBy = {};
-    for (const b of inc.lignes.filter(b => /^6/.test(b.acc))) { const key = b.acc.slice(0, 3) === '607' ? 'Achats de marchandises' : b.acc.slice(0, 2) === '64' ? 'Salaires et charges' : b.label; chargesBy[key] = (chargesBy[key] || 0) + b.solde; }
-    const top = Object.entries(chargesBy).sort((a, b) => b[1] - a[1]);
-    const donutItems = top.slice(0, 5).map(([label, value]) => ({ label, value })).concat(top.length > 5 ? [{ label: 'Autres', value: top.slice(5).reduce((s, x) => s + x[1], 0) }] : []);
-    const byClient = {};
-    for (const d of db.docs) if (d.kind === 'SALE' && d.status !== 'DRAFT' && d.date.startsWith(year) && d.totals) byClient[d.tierId] = (byClient[d.tierId] || 0) + d.totals.ht * (d.type === 'CREDIT' ? -1 : 1);
-    const ranking = Object.entries(byClient).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, value]) => ({ label: tierName(id), value }));
-    // on compare le dernier mois complet au précédent : le mois en cours est forcément incomplet
-    const prev = cur > 1 ? mo[cur - 2].produits : 0, delta = prev ? Math.round((mo[cur - 1].produits - prev) / Math.abs(prev) * 100) : null;
-    const kpi = (label, cents, extra = '', cls = '') => `<div class="card kpi ${cls}"><div class="k">${label}</div><div class="v" data-count="${cents}">${eur(cents)}</div>${extra}</div>`;
-    const hello = new Date().getHours() < 18 ? 'Bonjour' : 'Bonsoir';
-    if (!db.docs.length && !db.entries.length) return `<div class="hero-empty"><div class="orb"></div><h1>${hello} et bienvenue</h1>
-      <p class="sub">Votre dossier est vide. Créez vos premiers clients et factures, ou explorez une boutique fictive déjà remplie pour voir tous les graphiques en action.</p>
-      <div class="bar" style="justify-content:center"><button class="primary big" data-act="demo">Explorer la démo</button><button class="big" data-act="go" data-v="settings">Configurer ma société</button></div></div>`;
-    return `<header class="dash-head"><div><h1>${hello}${db.company.name ? ', ' + esc(db.company.name) : ''}</h1><p class="sub">Exercice ${year} · situation au ${fdate(today())}</p></div>
-      <div class="bar"><button data-act="newDoc" data-kind="SALE" data-type="INVOICE" class="primary">+ Facture</button><button data-act="newDoc" data-kind="PURCHASE" data-type="INVOICE">+ Achat</button></div></header>
-    <div class="dash">
-      <div class="card span-8 hero"><div class="hero-top"><div><div class="k">Trésorerie disponible</div><div class="v xl" data-count="${treso}">${eur(treso)}</div></div>
-        <div class="chips"><span class="chip">Banque ${eur(solde('512000'))}</span><span class="chip">Caisse ${eur(solde('530000'))}</span></div></div>
-        ${C.area(mo, cur)}</div>
-      <div class="span-4 stack">
-        ${kpi('Chiffre d\'affaires HT', inc.produits, delta === null ? '' : `<div class="trend ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} % en ${C.MONTHS[cur - 1]} vs ${C.MONTHS[cur - 2]}</div>`)}
-        ${kpi('Résultat de l\'exercice', inc.resultat, C.spark(mo.slice(0, cur + 1).reduce((a, m) => (a.push((a.at(-1) || 0) + m.produits - m.charges), a), [])), inc.resultat < 0 ? 'neg' : 'pos')}
-      </div>
-      <div class="span-12 cards4">
-        ${kpi('Marge brute sur ventes', marge, inc.produits ? `<div class="meter"><i style="width:${Math.max(0, Math.min(100, marge / inc.produits * 100)).toFixed(0)}%"></i></div><div class="k">${Math.round(marge / inc.produits * 100)} % du CA</div>` : '')}
-        ${kpi('À encaisser (clients)', due('SALE'), late.length ? `<div class="trend down">${late.length} facture${late.length > 1 ? 's' : ''} en retard</div>` : '<div class="trend up">Aucun retard</div>')}
-        ${kpi('À payer (fournisseurs)', due('PURCHASE'))}
-        ${kpi('Valeur du stock', stockVal, lowStock.length ? `<div class="trend down">${lowStock.length} article${lowStock.length > 1 ? 's' : ''} sous le seuil</div>` : '')}
-      </div>
-      <div class="card span-12"><div class="card-title">Produits et charges par mois<span class="k">${year}</span></div>${C.columns(mo, cur)}</div>
-      <div class="card span-6"><div class="card-title">Où part l'argent<span class="k">charges ${year}</span></div>${C.donut(donutItems, 'Charges')}</div>
-      <div class="card span-6"><div class="card-title">Meilleurs clients<span class="k">CA HT ${year}</span></div>${C.ranking(ranking)}</div>
-      <div class="span-12"><h2>Factures clients en retard</h2>${late.length ? docTable(late) : '<div class="empty">Aucun retard de paiement.</div>'}</div>
-      ${lowStock.length ? `<div class="span-12"><h2>À réapprovisionner</h2><table><tr><th>Article</th><th class="n">Stock</th><th class="n">Seuil</th></tr>${lowStock.map(p => `<tr><td>${esc(p.label)}</td><td class="n neg">${p.stock}</td><td class="n">${p.min || 0}</td></tr>`).join('')}</table></div>` : ''}
-    </div>`;
-  },
+  // tableau de bord : voir dashboard.js
 
   sales() { return docsView('SALE'); },
   purchases() { return docsView('PURCHASE'); },
@@ -562,4 +513,5 @@ document.addEventListener('change', e => {
   }
 });
 
-window.api.load().then(txt => { db = txt ? JSON.parse(txt) : L.empty(); render(); });
+// après le chargement de tous les scripts (dashboard.js, tools.js… complètent les vues)
+window.addEventListener('DOMContentLoaded', () => window.api.load().then(txt => { db = txt ? JSON.parse(txt) : L.empty(); render(); }));

@@ -61,10 +61,10 @@
   }
 
   // Barres horizontales (classement)
-  function ranking(items) {
+  function ranking(items, fmt = k) {
     if (!items.length) return '<div class="empty small">Pas encore de ventes.</div>';
     const max = Math.max(...items.map(x => x.value));
-    return `<div class="rank">${items.map((x, i) => `<div class="row" style="--i:${i}"><span>${esc(x.label)}</span><div class="track"><div class="fillbar" style="width:${(x.value / max * 100).toFixed(1)}%"></div></div><b>${k(x.value)}</b></div>`).join('')}</div>`;
+    return `<div class="rank">${items.map((x, i) => `<div class="row" style="--i:${i}"><span>${esc(x.label)}</span><div class="track"><div class="fillbar" style="width:${(x.value / max * 100).toFixed(1)}%"></div></div><b>${fmt(x.value)}</b></div>`).join('')}</div>`;
   }
 
   // Mini-courbe pour les cartes KPI

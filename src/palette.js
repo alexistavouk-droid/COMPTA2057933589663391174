@@ -9,8 +9,7 @@
 
   function all() {
     const out = [...document.querySelectorAll('nav a')].map(a => ({ k: 'Page', label: a.textContent, run: () => go(a.dataset.view) }));
-    [['pricing', 'Calculateur de prix'], ['discount', 'Simulateur de remise'], ['aged', 'Balance âgée & relances'], ['forecast', 'Prévisionnel de trésorerie'], ['abc', 'Analyse ABC des ventes'], ['stock', 'Rotation & inventaire'], ['breakeven', 'Seuil de rentabilité'], ['bfr', 'BFR & délais de paiement']]
-      .forEach(([t, label]) => out.push({ k: 'Outil', label, run: () => go('tools', { t }) }));
+    window.Toolbox.TOOLS.forEach(x => out.push({ k: 'Outil', label: x.title, run: () => go('tools', { t: x.t }) }));
     out.push({ k: 'Action', label: 'Nouvelle facture client', run: () => { go('sales'); actions.newDoc({ kind: 'SALE', type: 'INVOICE' }); } },
       { k: 'Action', label: 'Nouvelle facture fournisseur', run: () => { go('purchases'); actions.newDoc({ kind: 'PURCHASE', type: 'INVOICE' }); } },
       { k: 'Action', label: 'Nouveau devis', run: () => { go('sales'); actions.newDoc({ kind: 'SALE', type: 'QUOTE' }); } });

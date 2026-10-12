@@ -7,20 +7,28 @@
   const num0 = s => { const n = Number(String(s).replace(/\s/g, '').replace(',', '.')); return isFinite(n) ? n : 0; };
 
   const TOOLS = [
-    { t: 'pricing', ico: '€', title: 'Calculateur de prix', desc: 'Coefficient, taux de marque, taux de marge et prix TTC à partir du coût d\'achat.' },
-    { t: 'discount', ico: '%', title: 'Simulateur de remise', desc: 'Combien vendre en plus pour qu\'une promotion ne vous coûte rien.' },
-    { t: 'aged', ico: '⏱', title: 'Balance âgée & relances', desc: 'Créances clients par ancienneté de retard, texte de relance prêt à envoyer.' },
-    { t: 'forecast', ico: '↗', title: 'Prévisionnel de trésorerie', desc: 'Votre solde bancaire projeté sur 90 jours, point bas inclus.' },
-    { t: 'abc', ico: 'A', title: 'Analyse ABC des ventes', desc: 'Les 20 % d\'articles qui font 80 % de votre chiffre d\'affaires.' },
-    { t: 'stock', ico: '▦', title: 'Rotation & inventaire', desc: 'Couverture de stock, articles dormants, écriture d\'inventaire en un clic.' },
-    { t: 'breakeven', ico: '◎', title: 'Seuil de rentabilité', desc: 'Le chiffre d\'affaires à atteindre pour couvrir vos charges, et la date du point mort.' },
-    { t: 'bfr', ico: '⇄', title: 'BFR & délais de paiement', desc: 'DSO clients, DPO fournisseurs, rotation du stock et besoin en fonds de roulement.' }
+    { t: 'pricing', cat: 'prix', ico: '€', title: 'Calculateur de prix', desc: 'Coefficient, taux de marque, taux de marge et prix TTC à partir du coût d\'achat.' },
+    { t: 'discount', cat: 'prix', ico: '%', title: 'Simulateur de remise', desc: 'Combien vendre en plus pour qu\'une promotion ne vous coûte rien.' },
+    { t: 'aged', cat: 'clients', ico: '⏱', title: 'Balance âgée & relances', desc: 'Créances clients par ancienneté de retard, texte de relance prêt à envoyer.' },
+    { t: 'forecast', cat: 'treso', ico: '↗', title: 'Prévisionnel de trésorerie', desc: 'Votre solde bancaire projeté sur 90 jours, point bas inclus.' },
+    { t: 'abc', cat: 'ventes', ico: 'A', title: 'Analyse ABC des ventes', desc: 'Les 20 % d\'articles qui font 80 % de votre chiffre d\'affaires.' },
+    { t: 'stock', cat: 'stock', ico: '▦', title: 'Rotation & inventaire', desc: 'Couverture de stock, articles dormants, écriture d\'inventaire en un clic.' },
+    { t: 'breakeven', cat: 'pilotage', ico: '◎', title: 'Seuil de rentabilité', desc: 'Le chiffre d\'affaires à atteindre pour couvrir vos charges, et la date du point mort.' },
+    { t: 'bfr', cat: 'treso', ico: '⇄', title: 'BFR & délais de paiement', desc: 'DSO clients, DPO fournisseurs, rotation du stock et besoin en fonds de roulement.' }
   ];
+  const CATS = { prix: 'Prix & marges', ventes: 'Ventes & clients', clients: 'Encaissements & relances', treso: 'Trésorerie & financement', stock: 'Stock & achats', pilotage: 'Pilotage & objectifs', compta: 'Comptabilité & fiscalité', rh: 'Personnel' };
 
   const page = {
     hub() {
-      return `<h1>Boîte à outils</h1><p class="sub">Les outils d'analyse et de pilotage d'une entreprise qui vend. Tout est calculé à partir de vos factures et de votre comptabilité.</p>
-      <div class="tools">${TOOLS.map((x, i) => `<button class="tool" data-act="tool" data-t="${x.t}" style="--i:${i}"><span class="ico">${x.ico}</span><b>${x.title}</b><small>${x.desc}</small></button>`).join('')}</div>`;
+      const q = (param.q || '').toLowerCase();
+      const list = TOOLS.filter(x => !q || (x.title + ' ' + x.desc).toLowerCase().includes(q));
+      let i = 0;
+      return `<h1>Boîte à outils</h1><p class="sub">${TOOLS.length} outils pour piloter une entreprise qui vend : calculateurs, analyses de vos ventes, trésorerie, stock et contrôles comptables.</p>
+      <div class="bar"><input id="toolq" placeholder="Chercher un outil…" value="${esc(param.q || '')}" style="max-width:320px"></div>
+      ${Object.entries(CATS).map(([c, label]) => {
+        const xs = list.filter(x => x.cat === c);
+        return xs.length ? `<h2 class="cat">${label}<span class="k">${xs.length}</span></h2><div class="tools">${xs.map(x => `<button class="tool" data-act="tool" data-t="${x.t}" style="--i:${i++}"><span class="ico">${x.ico}</span><b>${x.title}</b><small>${x.desc}</small></button>`).join('')}</div>` : '';
+      }).join('') || '<div class="empty">Aucun outil ne correspond.</div>'}`;
     },
 
     pricing() {
@@ -159,6 +167,8 @@
   };
 
   views.tools = () => (page[param.t] || page.hub)();
+  window.Toolbox = { TOOLS, page, calcs, back, pct, num0 };
+  document.addEventListener('change', e => { if (e.target.id === 'toolq') go('tools', { q: e.target.value }); });
   Object.assign(actions, {
     tool: ({ t }) => go('tools', { t }),
     async copyDunning({ id }) {

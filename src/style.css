@@ -109,3 +109,37 @@ dialog[open]::backdrop { animation: fade .2s ease; backdrop-filter: blur(3px); }
 @keyframes fade { from { opacity: 0; } }
 @keyframes grow { from { transform: scaleY(0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, ::backdrop { animation: none !important; transition: none !important; } }
+
+/* ---------- Téléphone ---------- */
+@media (max-width: 760px) {
+  body { flex-direction: column; height: 100dvh; }
+  #nav { width: auto; flex-direction: row; align-items: center; padding: 10px 0 10px 16px; border-right: none; border-bottom: 1px solid var(--line); gap: 12px; position: sticky; top: 0; z-index: 5; }
+  .brand { padding: 0; font-size: 16px; flex: none; }
+  .brand b { display: none; }
+  nav { flex-direction: row; overflow-x: auto; scrollbar-width: none; gap: 4px; padding-right: 16px; scroll-snap-type: x proximity; }
+  nav::-webkit-scrollbar { display: none; }
+  nav small, #company { display: none; }
+  nav a { white-space: nowrap; padding: 8px 12px; scroll-snap-align: start; }
+  nav a:hover { transform: none; }
+  nav a.on::before { left: 12px; right: 12px; top: auto; bottom: 0; width: auto; height: 3px; }
+  main { padding: 18px 16px calc(40px + env(safe-area-inset-bottom)); }
+  h1 { font-size: 20px; }
+  .cards { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .card { padding: 12px 14px; }
+  .card .v { font-size: 18px; }
+  .grid { grid-template-columns: 1fr; }
+  .bar { gap: 6px; }
+  .bar .grow { display: none; }
+  .bar > button, .bar > select, .bar > input { flex: 1 1 auto; }
+  table { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+  #main div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
+  input, select, textarea, button { font-size: 16px; } /* évite le zoom automatique sur iPhone */
+  dialog { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; margin: 0; }
+  dialog form { padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  dialog table input, dialog table select { min-width: 80px; }
+  dialog .actions { flex-wrap: wrap; position: sticky; bottom: 0; background: var(--panel); padding-top: 10px; }
+  dialog .actions > * { flex: 1 1 45%; }
+  dialog .actions > span { display: none; }
+  .totals { min-width: 0; width: 100%; }
+  #toast { left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); text-align: center; }
+}

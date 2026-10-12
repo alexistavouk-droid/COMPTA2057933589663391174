@@ -8,7 +8,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "test": "node test/ledger.test.js",
+    "test": "node test/ledger.test.js && node test/analytics.test.js",
     "dist:win": "electron-builder --win nsis",
     "dist:mac": "electron-builder --mac dmg"
   },

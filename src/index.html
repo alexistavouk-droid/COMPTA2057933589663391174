@@ -6,12 +6,13 @@
   <meta name="theme-color" content="#4f46e5">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
   <title>Compta Elina</title>
-  <link rel="stylesheet" href="style.css?v=4">
-  <link rel="stylesheet" href="theme.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="theme.css?v=5">
 </head>
 <body>
   <aside id="nav">
     <div class="brand">Compta<b>Elina</b></div>
+    <button class="search" data-act="palette" title="Recherche rapide (Ctrl + K)"><span>Rechercher…</span><kbd>Ctrl K</kbd></button>
     <nav>
       <a data-view="dashboard">Tableau de bord</a>
       <small>Commercial</small>
@@ -25,6 +26,8 @@
       <a data-view="balance">Balance &amp; grand livre</a>
       <a data-view="states">Bilan &amp; résultat</a>
       <a data-view="vat">TVA</a>
+      <small>Outils</small>
+      <a data-view="tools">Boîte à outils</a>
       <small>Dossier</small>
       <a data-view="settings">Paramètres &amp; exports</a>
     </nav>
@@ -34,9 +37,12 @@
   <dialog id="modal"><form method="dialog" id="modalForm"></form></dialog>
   <div id="toast"></div>
   <div id="print"></div>
-  <script src="ledger.js?v=4"></script>
-  <script src="charts.js?v=4"></script>
-  <script src="demo.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="ledger.js?v=5"></script>
+  <script src="charts.js?v=5"></script>
+  <script src="demo.js?v=5"></script>
+  <script src="analytics.js?v=5"></script>
+  <script src="app.js?v=5"></script>
+  <script src="tools.js?v=5"></script>
+  <script src="palette.js?v=5"></script>
 </body>
 </html>

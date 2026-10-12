@@ -236,7 +236,7 @@ function tierBalance(t) {
 
 function docTable(list) {
   return `<table><tr><th>Numéro</th><th>Type</th><th>Date</th><th>Tiers</th><th>Échéance</th><th class="n">HT</th><th class="n">TTC</th><th>Statut</th></tr>
-  ${list.map(d => { const t = docTotal(d); return `<tr class="click" data-act="docForm" data-id="${d.id}"><td>${d.number || '<i>brouillon</i>'}</td><td>${TYPE[d.type]}</td><td>${fdate(d.date)}</td><td>${esc(tierName(d.tierId))}</td><td>${fdate(d.due)}</td><td class="n">${eur(t.ht)}</td><td class="n">${eur(t.ttc)}</td><td>${pill(d)}</td></tr>`; }).join('')}</table>`;
+  ${list.map(d => { const t = docTotal(d); return `<tr class="click" data-act="docForm" data-id="${d.id}"><td>${d.number || '<i>brouillon</i>'}</td><td>${TYPE[d.type]}</td><td>${fdate(d.date)}</td><td>${esc(tierName(d.tierId))}</td><td>${fdate(d.due)}</td><td class="n">${eur(t.ht)}</td><td class="n">${eur(t.ttc)}</td><td>${pill(d)}</td></tr>`; }).join('')}${(() => { const f = list.filter(d => d.type === 'INVOICE' || d.type === 'CREDIT'), s = k => f.reduce((x, d) => x + docTotal(d)[k] * (d.type === 'CREDIT' ? -1 : 1), 0); return f.length > 1 ? `<tfoot><tr><td colspan="5">${f.length} factures et avoirs</td><td class="n">${eur(s('ht'))}</td><td class="n">${eur(s('ttc'))}</td><td></td></tr></tfoot>` : ''; })()}</table>`;
 }
 
 function docsView(kind) {
@@ -448,6 +448,7 @@ const actions = {
   delLine: (_, el) => el.closest('tr').remove(),
   addOdLine: () => $('#odl').insertAdjacentHTML('beforeend', $('#modalForm')._odRow()),
   payForm,
+  palette: () => window.openPalette(),
   async issueDoc() {
     const d = $('#modalForm')._doc;
     if (!confirm('Une fois émis, le document est définitif (numéro attribué, écriture comptable passée). Continuer ?')) return;

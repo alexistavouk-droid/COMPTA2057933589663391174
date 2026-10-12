@@ -185,6 +185,21 @@
     ], 'VAT');
   }
 
+  // Séries mensuelles pour les graphiques : produits, charges et trésorerie (512 + 53) en fin de mois.
+  function monthly(db, year) {
+    const m = Array.from({ length: 12 }, () => ({ produits: 0, charges: 0, flux: 0, treso: 0 }));
+    let cash = 0;
+    for (const e of db.entries) for (const l of e.lines) {
+      const amt = l.debit - l.credit, y = e.date.slice(0, 4);
+      if (/^5(12|3)/.test(l.acc)) { if (y < year) cash += amt; else if (y === year) m[+e.date.slice(5, 7) - 1].flux += amt; }
+      if (y !== year) continue;
+      const i = +e.date.slice(5, 7) - 1;
+      if (/^7/.test(l.acc)) m[i].produits -= amt; else if (/^6/.test(l.acc)) m[i].charges += amt;
+    }
+    for (const x of m) { cash += x.flux; x.treso = cash; }
+    return m;
+  }
+
   // Fichier des Écritures Comptables, art. A47 A-1 du LPF (18 colonnes, séparateur tabulation)
   function fec(db, from, to) {
     const ymd = d => d.replace(/-/g, '');
@@ -201,6 +216,6 @@
     return rows.join('\r\n');
   }
 
-  const L = { PCG, JOURNALS, empty, uid, lineTotals, docTotals, post, issue, pay, balance, income, sheet, vat, settleVat, fec, dc };
+  const L = { PCG, JOURNALS, empty, uid, lineTotals, docTotals, post, issue, pay, balance, income, sheet, vat, settleVat, monthly, fec, dc };
   if (typeof module !== 'undefined') module.exports = L; else window.Ledger = L;
 })();

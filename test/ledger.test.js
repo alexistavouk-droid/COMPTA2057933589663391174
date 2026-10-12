@@ -57,4 +57,8 @@ assert.strictEqual(L.balance(db).find(b => b.acc === '411000').solde, -24000);
 const fec = L.fec(db).split('\r\n');
 assert.strictEqual(fec[0].split('\t').length, 18);
 assert.ok(fec.slice(1).every(r => r.split('\t').length === 18));
+const mo = L.monthly(db, '2026');
+assert.strictEqual(mo[2].produits, 110000);
+assert.strictEqual(mo[2].treso, 132000);
+assert.strictEqual(mo[3].produits, -20000);
 console.log('OK - ' + db.entries.length + ' écritures, ' + (fec.length - 1) + ' lignes FEC');

@@ -44,6 +44,16 @@ function render() {
   $('#company').textContent = db.company.name + (db.company.siren ? ' · ' + db.company.siren : '');
   $('#main').innerHTML = views[view]();
   $('#main').scrollTop = 0;
+  countUp();
+}
+
+function countUp() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelectorAll('[data-count]').forEach(el => {
+    const end = +el.dataset.count, t0 = performance.now(), dur = 900;
+    const step = t => { const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = eur(Math.round(end * e)); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
 }
 
 const statusOf = d => d.status === 'ISSUED' && d.due && d.due < today() ? 'LATE' : d.status;
@@ -63,21 +73,45 @@ const views = {
     const marge = db.docs.filter(d => d.kind === 'SALE' && d.type !== 'QUOTE' && d.status !== 'DRAFT')
       .reduce((s, d) => s + (d.type === 'CREDIT' ? -1 : 1) * d.lines.reduce((m, l) => m + L.lineTotals(l).ht - Math.round(l.qty * (l.cost || 0)), 0), 0);
     const stockVal = db.products.filter(p => p.type === 'GOODS').reduce((s, p) => s + Math.round(Math.max(p.stock, 0) * p.cost), 0);
-    return `<h1>Tableau de bord</h1><p class="sub">Exercice ${today().slice(0, 4)}, au ${fdate(today())}</p>
-    <div class="cards">
-      <div class="card"><div class="k">Trésorerie (banque + caisse)</div><div class="v">${eur(solde('512000') + solde('530000'))}</div></div>
-      <div class="card"><div class="k">Chiffre d'affaires HT</div><div class="v">${eur(inc.produits)}</div></div>
-      <div class="card"><div class="k">Résultat</div><div class="v ${inc.resultat < 0 ? 'neg' : 'pos'}">${eur(inc.resultat)}</div></div>
-      <div class="card"><div class="k">Marge brute sur ventes</div><div class="v">${eur(marge)}</div></div>
-      <div class="card"><div class="k">À encaisser (clients)</div><div class="v">${eur(due('SALE'))}</div></div>
-      <div class="card"><div class="k">À payer (fournisseurs)</div><div class="v">${eur(due('PURCHASE'))}</div></div>
-      <div class="card"><div class="k">Valeur du stock (CMUP)</div><div class="v">${eur(stockVal)}</div></div>
-      <div class="card"><div class="k">TVA nette de l'année</div><div class="v">${eur(L.vat(db, from, today()).net)}</div></div>
-    </div>
-    <h2>Factures clients en retard</h2>
-    ${late.length ? docTable(late) : '<div class="empty">Aucun retard de paiement.</div>'}
-    <h2>Stock bas</h2>
-    ${(() => { const low = db.products.filter(p => p.type === 'GOODS' && p.stock <= (p.min || 0)); return low.length ? `<table><tr><th>Article</th><th class="n">Stock</th><th class="n">Seuil</th></tr>${low.map(p => `<tr><td>${esc(p.label)}</td><td class="n neg">${p.stock}</td><td class="n">${p.min || 0}</td></tr>`).join('')}</table>` : '<div class="empty">Aucun article sous son seuil.</div>'; })()}`;
+    const C = window.Charts, year = today().slice(0, 4), mo = L.monthly(db, year), cur = +today().slice(5, 7) - 1;
+    const treso = solde('512000') + solde('530000');
+    const lowStock = db.products.filter(p => p.type === 'GOODS' && p.stock <= (p.min || 0));
+    const chargesBy = {};
+    for (const b of inc.lignes.filter(b => /^6/.test(b.acc))) { const key = b.acc.slice(0, 3) === '607' ? 'Achats de marchandises' : b.acc.slice(0, 2) === '64' ? 'Salaires et charges' : b.label; chargesBy[key] = (chargesBy[key] || 0) + b.solde; }
+    const top = Object.entries(chargesBy).sort((a, b) => b[1] - a[1]);
+    const donutItems = top.slice(0, 5).map(([label, value]) => ({ label, value })).concat(top.length > 5 ? [{ label: 'Autres', value: top.slice(5).reduce((s, x) => s + x[1], 0) }] : []);
+    const byClient = {};
+    for (const d of db.docs) if (d.kind === 'SALE' && d.status !== 'DRAFT' && d.date.startsWith(year) && d.totals) byClient[d.tierId] = (byClient[d.tierId] || 0) + d.totals.ht * (d.type === 'CREDIT' ? -1 : 1);
+    const ranking = Object.entries(byClient).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id, value]) => ({ label: tierName(id), value }));
+    // on compare le dernier mois complet au précédent : le mois en cours est forcément incomplet
+    const prev = cur > 1 ? mo[cur - 2].produits : 0, delta = prev ? Math.round((mo[cur - 1].produits - prev) / Math.abs(prev) * 100) : null;
+    const kpi = (label, cents, extra = '', cls = '') => `<div class="card kpi ${cls}"><div class="k">${label}</div><div class="v" data-count="${cents}">${eur(cents)}</div>${extra}</div>`;
+    const hello = new Date().getHours() < 18 ? 'Bonjour' : 'Bonsoir';
+    if (!db.docs.length && !db.entries.length) return `<div class="hero-empty"><div class="orb"></div><h1>${hello} et bienvenue</h1>
+      <p class="sub">Votre dossier est vide. Créez vos premiers clients et factures, ou explorez une boutique fictive déjà remplie pour voir tous les graphiques en action.</p>
+      <div class="bar" style="justify-content:center"><button class="primary big" data-act="demo">Explorer la démo</button><button class="big" data-act="go" data-v="settings">Configurer ma société</button></div></div>`;
+    return `<header class="dash-head"><div><h1>${hello}${db.company.name ? ', ' + esc(db.company.name) : ''}</h1><p class="sub">Exercice ${year} · situation au ${fdate(today())}</p></div>
+      <div class="bar"><button data-act="newDoc" data-kind="SALE" data-type="INVOICE" class="primary">+ Facture</button><button data-act="newDoc" data-kind="PURCHASE" data-type="INVOICE">+ Achat</button></div></header>
+    <div class="dash">
+      <div class="card span-8 hero"><div class="hero-top"><div><div class="k">Trésorerie disponible</div><div class="v xl" data-count="${treso}">${eur(treso)}</div></div>
+        <div class="chips"><span class="chip">Banque ${eur(solde('512000'))}</span><span class="chip">Caisse ${eur(solde('530000'))}</span></div></div>
+        ${C.area(mo, cur)}</div>
+      <div class="span-4 stack">
+        ${kpi('Chiffre d\'affaires HT', inc.produits, delta === null ? '' : `<div class="trend ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} % en ${C.MONTHS[cur - 1]} vs ${C.MONTHS[cur - 2]}</div>`)}
+        ${kpi('Résultat de l\'exercice', inc.resultat, C.spark(mo.slice(0, cur + 1).reduce((a, m) => (a.push((a.at(-1) || 0) + m.produits - m.charges), a), [])), inc.resultat < 0 ? 'neg' : 'pos')}
+      </div>
+      <div class="span-12 cards4">
+        ${kpi('Marge brute sur ventes', marge, inc.produits ? `<div class="meter"><i style="width:${Math.max(0, Math.min(100, marge / inc.produits * 100)).toFixed(0)}%"></i></div><div class="k">${Math.round(marge / inc.produits * 100)} % du CA</div>` : '')}
+        ${kpi('À encaisser (clients)', due('SALE'), late.length ? `<div class="trend down">${late.length} facture${late.length > 1 ? 's' : ''} en retard</div>` : '<div class="trend up">Aucun retard</div>')}
+        ${kpi('À payer (fournisseurs)', due('PURCHASE'))}
+        ${kpi('Valeur du stock', stockVal, lowStock.length ? `<div class="trend down">${lowStock.length} article${lowStock.length > 1 ? 's' : ''} sous le seuil</div>` : '')}
+      </div>
+      <div class="card span-12"><div class="card-title">Produits et charges par mois<span class="k">${year}</span></div>${C.columns(mo, cur)}</div>
+      <div class="card span-6"><div class="card-title">Où part l'argent<span class="k">charges ${year}</span></div>${C.donut(donutItems, 'Charges')}</div>
+      <div class="card span-6"><div class="card-title">Meilleurs clients<span class="k">CA HT ${year}</span></div>${C.ranking(ranking)}</div>
+      <div class="span-12"><h2>Factures clients en retard</h2>${late.length ? docTable(late) : '<div class="empty">Aucun retard de paiement.</div>'}</div>
+      ${lowStock.length ? `<div class="span-12"><h2>À réapprovisionner</h2><table><tr><th>Article</th><th class="n">Stock</th><th class="n">Seuil</th></tr>${lowStock.map(p => `<tr><td>${esc(p.label)}</td><td class="n neg">${p.stock}</td><td class="n">${p.min || 0}</td></tr>`).join('')}</table></div>` : ''}
+    </div>`;
   },
 
   sales() { return docsView('SALE'); },
@@ -187,7 +221,7 @@ const views = {
       <label>&nbsp;<button class="primary">Enregistrer</button></label>
     </form></div>
     <h2>Exports légaux et sauvegarde</h2>
-    <div class="bar"><button data-act="exportFec" class="primary">Exporter le FEC</button><button data-act="backup">Sauvegarder le dossier (.json)</button><button data-act="restore">Restaurer une sauvegarde</button></div>
+    <div class="bar"><button data-act="exportFec" class="primary">Exporter le FEC</button><button data-act="backup">Sauvegarder le dossier (.json)</button><button data-act="restore">Restaurer une sauvegarde</button><button data-act="demo">Charger la démo</button><button data-act="reset" class="danger">Effacer toutes les données</button></div>
     <h2>Plan comptable</h2>
     <div class="bar"><button data-act="accountForm">Ajouter un compte</button></div>
     <table><tr><th>Compte</th><th>Libellé</th></tr>${db.accounts.slice().sort((a, b) => a.num.localeCompare(b.num)).map(a => `<tr><td>${a.num}</td><td>${esc(a.label)}</td></tr>`).join('')}</table>`;
@@ -465,6 +499,14 @@ const actions = {
   async exportStates() {
     const inc = L.income(db, $('#pfrom').value, $('#pto').value);
     if (await window.api.exportFile('compte-de-resultat.csv', csv([['Compte', 'Libellé', 'Montant'], ...inc.lignes.map(b => [b.acc, b.label, /^7/.test(b.acc) ? -b.solde : b.solde]), ['', 'Résultat', inc.resultat]]))) toast('Export réalisé');
+  },
+  async demo() {
+    if ((db.docs.length || db.entries.length) && !confirm('Remplacer le dossier actuel par la boutique de démonstration ? Faites une sauvegarde avant si besoin.')) return;
+    db = window.demoData(); await save(); go('dashboard'); toast('Démo chargée : Elina Studio');
+  },
+  async reset() {
+    if (!confirm('Effacer définitivement toutes les données de ce dossier ?')) return;
+    db = L.empty(); await save(); go('dashboard'); toast('Dossier vide');
   },
   async backup() { if (await window.api.exportFile(`compta-${today()}.json`, JSON.stringify(db, null, 1))) toast('Sauvegarde créée'); },
   async restore() {

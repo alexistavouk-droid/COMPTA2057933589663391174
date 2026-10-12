@@ -1,0 +1,45 @@
+{
+  "name": "compta-elina",
+  "productName": "Compta Elina",
+  "version": "1.0.0",
+  "description": "Comptabilité et gestion commerciale pour startups et commerces",
+  "main": "main.js",
+  "author": "Compta Elina",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/ledger.test.js",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg"
+  },
+  "build": {
+    "appId": "fr.elina.compta",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Compta Elina"
+    },
+    "mac": {
+      "target": {
+        "target": "dmg",
+        "arch": [
+          "universal"
+        ]
+      },
+      "category": "public.app-category.finance"
+    }
+  },
+  "devDependencies": {
+    "electron": "^37.10.3",
+    "electron-builder": "^26.15.3"
+  }
+}

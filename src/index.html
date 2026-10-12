@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>Compta Elina</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside id="nav">
+    <div class="brand">Compta<b>Elina</b></div>
+    <nav>
+      <a data-view="dashboard">Tableau de bord</a>
+      <small>Commercial</small>
+      <a data-view="sales">Ventes</a>
+      <a data-view="purchases">Achats</a>
+      <a data-view="tiers">Clients &amp; fournisseurs</a>
+      <a data-view="products">Articles &amp; stock</a>
+      <small>Comptabilité</small>
+      <a data-view="treasury">Trésorerie</a>
+      <a data-view="journal">Écritures</a>
+      <a data-view="balance">Balance &amp; grand livre</a>
+      <a data-view="states">Bilan &amp; résultat</a>
+      <a data-view="vat">TVA</a>
+      <small>Dossier</small>
+      <a data-view="settings">Paramètres &amp; exports</a>
+    </nav>
+    <div id="company"></div>
+  </aside>
+  <main id="main"></main>
+  <dialog id="modal"><form method="dialog" id="modalForm"></form></dialog>
+  <div id="toast"></div>
+  <div id="print"></div>
+  <script src="ledger.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

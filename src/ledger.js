@@ -29,7 +29,7 @@
     return {
       company: { name: 'Ma Startup', siren: '', vatNumber: '', address: '', email: '', iban: '', lockedUntil: '' },
       accounts: PCG.map(([num, label]) => ({ num, label })),
-      tiers: [], products: [], docs: [], payments: [], entries: [], seq: {}
+      tiers: [], products: [], docs: [], payments: [], entries: [], movements: [], seq: {}, version: 2
     };
   }
 
@@ -101,18 +101,19 @@
       : [...Object.entries(byAcc).map(([a, v]) => dc(a, v * s, label)), dc('445660', tot.tva * s, label), dc('401000', -tot.ttc * s, label, tier.code)];
     const e = post(db, sale ? 'VT' : 'HA', doc.date, doc.number, label, lines, doc.id);
 
-    // Stock et coût de revient (CMUP)
-    for (const l of doc.lines) {
+    // Stock et coût de revient (CMUP), chaque ligne d'article produit un mouvement unique
+    doc.lines.forEach((l, i) => {
       const p = db.products.find(x => x.id === l.productId);
-      if (!p || p.type !== 'GOODS') continue;
-      if (sale) { l.cost = p.cost; p.stock -= l.qty * s; }
+      if (!p || p.type !== 'GOODS') return;
+      let q, unit;
+      if (sale) { l.cost = p.cost; q = -l.qty * s; unit = p.cost; }
       else {
-        const unit = R(l.price * (1 - (l.disc || 0) / 100) * factor);
-        const q = l.qty * s;
+        unit = R(l.price * (1 - (l.disc || 0) / 100) * factor);
+        q = l.qty * s;
         if (s > 0 && p.stock + q > 0) p.cost = R((Math.max(p.stock, 0) * p.cost + q * unit) / (Math.max(p.stock, 0) + q));
-        p.stock += q;
       }
-    }
+      movement(db, { date: doc.date, productId: p.id, qty: q, unitCost: unit, docId: doc.id, line: i, kind: doc.kind });
+    });
     doc.status = 'ISSUED';
     doc.totals = tot;
     doc.paid = 0;
@@ -120,11 +121,66 @@
     return doc;
   }
 
-  function pay(db, docId, date, amount, method) {
+  // Mouvement de stock : un seul par ligne de document (clé docId + ligne), le stock de l'article suit
+  function movement(db, m) {
+    db.movements = db.movements || [];
+    if (m.docId && db.movements.some(x => x.docId === m.docId && x.line === m.line)) throw new Error('Mouvement de stock déjà enregistré pour cette ligne');
+    const p = db.products.find(x => x.id === m.productId);
+    if (!p) throw new Error('Article inconnu');
+    if (!Number.isFinite(m.qty) || !m.qty) throw new Error('Quantité de mouvement invalide');
+    const mv = { id: uid(), date: m.date, productId: p.id, qty: m.qty, unitCost: m.unitCost ?? p.cost, docId: m.docId || '', line: m.line ?? null, kind: m.kind || 'ADJUST', reason: m.reason || '', stockAfter: p.stock + m.qty };
+    p.stock = mv.stockAfter;
+    db.movements.push(mv);
+    return mv;
+  }
+
+  // Inventaire : on enregistre l'écart entre le stock compté et le stock théorique
+  function adjustStock(db, productId, counted, date, reason) {
+    const p = db.products.find(x => x.id === productId);
+    if (!p || p.type !== 'GOODS') throw new Error('Article stocké inconnu');
+    if (!Number.isFinite(counted) || counted < 0) throw new Error('Quantité comptée invalide');
+    if (counted === p.stock) return null;
+    return movement(db, { date, productId, qty: counted - p.stock, kind: 'ADJUST', reason: reason || 'Inventaire' });
+  }
+
+  // Devis -> commande -> facture : le document source est marqué « transformé » et relié au nouveau
+  const CHAIN = { QUOTE: ['ORDER', 'INVOICE'], ORDER: ['INVOICE'] };
+  function convert(db, docId, toType, date) {
+    const src = db.docs.find(d => d.id === docId);
+    if (!src) throw new Error('Document introuvable');
+    if (!(CHAIN[src.type] || []).includes(toType)) throw new Error('Transformation impossible');
+    if (src.status !== 'DRAFT' || src.convertedTo) throw new Error('Ce document a déjà été transformé');
+    const doc = { ...JSON.parse(JSON.stringify(src)), id: uid(), type: toType, status: 'DRAFT', number: '', date, origin: src.id, convertedTo: '' };
+    delete doc.totals; delete doc.paid; delete doc.entryId;
+    if (toType === 'ORDER') doc.number = nextNumber(db, src.kind === 'SALE' ? 'BC' : 'BCF', date);
+    src.status = 'ACCEPTED';
+    src.convertedTo = doc.id;
+    db.docs.push(doc);
+    return doc;
+  }
+  const draftNumber = (db, doc) => doc.number || (doc.type === 'QUOTE' ? nextNumber(db, 'DE', doc.date) : doc.type === 'ORDER' ? nextNumber(db, doc.kind === 'SALE' ? 'BC' : 'BCF', doc.date) : '');
+
+  // Chaîne complète d'un document : ses origines puis ses descendants (transformations, avoirs)
+  function links(db, docId) {
+    const byId = id => db.docs.find(d => d.id === id);
+    const up = [];
+    for (let d = byId(docId); d && d.origin; d = byId(d.origin)) up.unshift(byId(d.origin));
+    const down = [];
+    const walk = id => db.docs.filter(d => d.origin === id).forEach(d => { down.push(d); walk(d.id); });
+    walk(docId);
+    return { up: up.filter(Boolean), down };
+  }
+
+  function pay(db, docId, date, amount, method, opts = {}) {
     const doc = db.docs.find(d => d.id === docId);
     if (!doc || doc.status === 'DRAFT') throw new Error('Document non émis');
     if (!Number.isInteger(amount) || amount <= 0) throw new Error('Montant invalide');
     if (amount > doc.totals.ttc - doc.paid) throw new Error('Montant supérieur au reste dû');
+    if (!opts.allowDuplicate && db.payments.some(p => p.docId === docId && p.amount === amount && p.date === date)) {
+      const err = new Error('Un règlement identique (même date, même montant) existe déjà pour ce document');
+      err.code = 'DUPLICATE';
+      throw err;
+    }
     const tier = db.tiers.find(t => t.id === doc.tierId);
     const bank = method === 'CASH' ? '530000' : '512000';
     const s = doc.type === 'CREDIT' ? -1 : 1;
@@ -216,6 +272,6 @@
     return rows.join('\r\n');
   }
 
-  const L = { PCG, JOURNALS, empty, uid, lineTotals, docTotals, post, issue, pay, balance, income, sheet, vat, settleVat, monthly, fec, dc };
+  const L = { PCG, JOURNALS, empty, uid, lineTotals, docTotals, post, issue, pay, movement, adjustStock, convert, draftNumber, links, nextNumber, balance, income, sheet, vat, settleVat, monthly, fec, dc };
   if (typeof module !== 'undefined') module.exports = L; else window.Ledger = L;
 })();

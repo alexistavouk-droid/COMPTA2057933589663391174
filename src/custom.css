@@ -1,0 +1,41 @@
+/* ---------- Variantes pilotées par les préférences (attributs posés sur <html> par prefs.js) ---------- */
+body { line-height: var(--lh); }
+:root[data-mode="dark"] { color-scheme: dark; } :root[data-mode="light"] { color-scheme: light; }
+
+/* Densité */
+[data-density="compact"] main { padding: 16px 22px 40px; }
+[data-density="compact"] .card { padding: 10px 13px; }
+[data-density="compact"] th, [data-density="compact"] td { padding: 5px 9px; }
+[data-density="compact"] nav a { padding: 5px 10px; }
+[data-density="compact"] .dash, [data-density="compact"] .cards, [data-density="compact"] .stack, [data-density="compact"] .cards4, [data-density="compact"] .tools { gap: 8px; }
+[data-density="compact"] .sub { margin-bottom: 12px; }
+[data-density="airy"] main { padding: 36px 48px 80px; }
+[data-density="airy"] .card { padding: 22px 26px; }
+[data-density="airy"] th, [data-density="airy"] td { padding: 13px 16px; }
+[data-density="airy"] nav a { padding: 11px 12px; }
+[data-density="airy"] .dash, [data-density="airy"] .cards, [data-density="airy"] .stack, [data-density="airy"] .cards4, [data-density="airy"] .tools { gap: 22px; }
+
+/* Contraste renforcé */
+[data-contrast="high"] { --muted: #3f3f46; --line: #8e8e96; --glass: var(--panel); }
+[data-contrast="high"][data-mode="dark"] { --muted: #d4d4d8; --line: #71717a; }
+[data-contrast="high"] :focus-visible { outline: 3px solid var(--accent-ink) !important; outline-offset: 2px; }
+[data-contrast="high"] a[data-act], [data-contrast="high"] button.link { text-decoration: underline; }
+[data-contrast="high"] .card, [data-contrast="high"] table, [data-contrast="high"] .empty { border-width: 2px; }
+
+/* Effet verre, halos, dégradés */
+[data-glass="off"] { --glass: var(--panel); }
+[data-glass="off"] .card, [data-glass="off"] .empty, [data-glass="off"] #nav, [data-glass="off"] .tool, [data-glass="off"] .tl-body, [data-glass="off"] .dash-add { backdrop-filter: none; -webkit-backdrop-filter: none; }
+[data-halos="off"] body::before, [data-halos="off"] body::after, [data-halos="off"] main::before { display: none; }
+[data-gradients="off"] { --grad: var(--accent); }
+
+/* Animations : « complètes » ignore le réglage système, « réduites » garde des transitions brèves, « aucune » coupe tout */
+[data-motion="off"] *, [data-motion="off"] *::before, [data-motion="off"] *::after, [data-motion="off"] ::backdrop { animation: none !important; transition: none !important; }
+[data-motion="off"] .chart .draw { stroke-dashoffset: 0; }
+[data-motion="reduced"] *, [data-motion="reduced"] *::before, [data-motion="reduced"] *::after { animation-duration: 1ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 80ms !important; }
+[data-motion="reduced"] .tilt, [data-motion="off"] .tilt { transform: none !important; }
+
+/* Focus clavier toujours visible */
+:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+/* Les documents imprimés gardent une taille fixe, quelle que soit la préférence d'affichage */
+@media print { :root { --fs: 14px !important; --lh: 1.45 !important; } }

@@ -1,16 +1,20 @@
 {
   "name": "compta-elina",
   "productName": "Compta Elina",
-  "version": "1.0.0",
-  "description": "Comptabilité et gestion commerciale pour startups et commerces",
+  "version": "2.0.0",
+  "description": "Comptabilité et gestion commerciale pour startups et commerces (web et Windows)",
   "main": "main.js",
   "author": "Compta Elina",
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "test": "node test/ledger.test.js && node test/analytics.test.js",
-    "dist:win": "electron-builder --win nsis",
-    "dist:mac": "electron-builder --mac dmg"
+    "test": "node --test --test-reporter=spec \"test/*.test.js\"",
+    "stamp": "node scripts/stamp.js",
+    "e2e": "electron scripts/e2e.js",
+    "manual": "electron scripts/capture.js",
+    "predist:win": "npm run stamp && npm test",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:mac": "electron-builder --mac dmg --publish never"
   },
   "build": {
     "appId": "fr.elina.compta",
@@ -26,7 +30,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Compta Elina"
+      "shortcutName": "Compta Elina",
+      "uninstallDisplayName": "Compta Elina"
     },
     "mac": {
       "target": {
@@ -36,7 +41,8 @@
         ]
       },
       "category": "public.app-category.finance"
-    }
+    },
+    "artifactName": "Compta-Elina-Setup-${version}.${ext}"
   },
   "devDependencies": {
     "electron": "^37.10.3",

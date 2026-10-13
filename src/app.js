@@ -1,13 +1,29 @@
 const L = window.Ledger;
+const APP_VERSION = '2.0.0';
 
 // Version site web (GitHub Pages) : pas d'Electron, les données restent dans le navigateur.
-if (!window.api) window.api = {
-  load: async () => localStorage.getItem('compta'),
-  save: async json => (localStorage.setItem('compta', json), true),
-  exportFile: async (name, content) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content])); a.download = name; a.click(); return name; },
-  importFile: () => new Promise(res => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json'; i.onchange = () => i.files[0].text().then(res); i.click(); }),
-  pdf: async () => (window.print(), true)
-};
+// Les sauvegardes automatiques y sont gardées dans le stockage du navigateur (8 au plus), faute d'accès aux fichiers.
+if (!window.api) {
+  const SNAP = 'compta-elina-snapshots';
+  const snaps = () => { try { return JSON.parse(localStorage.getItem(SNAP) || '[]'); } catch { return []; } };
+  window.api = {
+    platform: 'web',
+    load: async () => localStorage.getItem('compta'),
+    save: async json => (localStorage.setItem('compta', json), true),
+    exportFile: async (name, content) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([content])); a.download = name; a.click(); return name; },
+    importFile: () => new Promise(res => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json'; i.onchange = () => i.files[0].text().then(res); i.click(); }),
+    pdf: async () => (window.print(), true),
+    snapshot: async (json, label) => {
+      const list = snaps(), id = 's' + Date.now();
+      list.unshift({ id, at: new Date().toISOString(), label, size: json.length, data: json });
+      // on retire les plus anciennes jusqu'à ce que ça tienne dans le quota du navigateur
+      for (let n = Math.min(list.length, 8); n > 0; n--) { try { localStorage.setItem(SNAP, JSON.stringify(list.slice(0, n))); return id; } catch { /* quota */ } }
+      throw new Error('Stockage du navigateur plein : sauvegarde automatique impossible, exportez un fichier');
+    },
+    listSnapshots: async () => snaps().map(({ data, ...meta }) => meta),
+    readSnapshot: async id => (snaps().find(s => s.id === id) || {}).data || null
+  };
+}
 let db, view = 'dashboard', param = {};
 
 const $ = s => document.querySelector(s);
@@ -40,15 +56,18 @@ async function mutate(fn) {
 function go(v, p = {}) { view = v; param = p; render(); }
 
 function render() {
-  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.view === view || (view === 'ledger' && a.dataset.view === 'balance')));
-  $('#company').textContent = db.company.name + (db.company.siren ? ' · ' + db.company.siren : '');
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.view === view || (view === 'ledger' && a.dataset.view === 'balance') || (view === 'tier' && a.dataset.view === 'tiers')));
+  if (window.renderNav) renderNav();
+  $('#company').textContent = db ? db.company.name + (db.company.siren ? ' · ' + db.company.siren : '') + (db.demo ? ' · démo' : '') : '';
+  document.body.classList.toggle('is-demo', !!(db && db.demo));
+  if (!db && view !== 'backups') return;
   $('#main').innerHTML = views[view]();
   $('#main').scrollTop = 0;
   countUp();
 }
 
 function countUp() {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if (motionReduced()) return;
   document.querySelectorAll('[data-count]').forEach(el => {
     const end = +el.dataset.count, t0 = performance.now(), dur = 900;
     const step = t => { const p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3); el.textContent = eur(Math.round(end * e)); if (p < 1) requestAnimationFrame(step); };
@@ -74,13 +93,13 @@ const views = {
     <div class="bar"><input id="q" placeholder="Rechercher…" value="${esc(param.q || '')}" style="max-width:280px"><span class="grow"></span>
       <button data-act="tierForm" data-type="C" class="primary">Nouveau client</button><button data-act="tierForm" data-type="F">Nouveau fournisseur</button></div>
     ${list.length ? `<table><tr><th>Code</th><th>Nom</th><th>Type</th><th>SIREN</th><th>Email</th><th class="n">Solde</th></tr>
-    ${list.map(t => { const s = tierBalance(t); return `<tr class="click" data-act="tierForm" data-id="${t.id}"><td>${t.code}</td><td>${esc(t.name)}</td><td>${t.type === 'C' ? 'Client' : 'Fournisseur'}</td><td>${esc(t.siren)}</td><td>${esc(t.email)}</td><td class="n">${eur(s)}</td></tr>`; }).join('')}</table>`
+    ${list.map(t => { const s = tierBalance(t); return `<tr class="click" data-act="tierSheet" data-id="${t.id}"><td>${t.code}</td><td>${esc(t.name)}</td><td>${t.type === 'C' ? 'Client' : 'Fournisseur'}</td><td>${esc(t.siren)}</td><td>${esc(t.email)}</td><td class="n">${eur(s)}</td></tr>`; }).join('')}</table>`
       : '<div class="empty">Ajoutez votre premier client ou fournisseur.</div>'}`;
   },
 
   products() {
     return `<h1>Articles &amp; stock</h1><p class="sub">Coût de revient au coût moyen unitaire pondéré (CMUP), mis à jour à chaque facture d'achat.</p>
-    <div class="bar"><span class="grow"></span><button data-act="productForm" class="primary">Nouvel article</button><button data-act="stockAdjust">Ajuster un stock</button></div>
+    <div class="bar"><span class="grow"></span><button data-act="productForm" class="primary">Nouvel article</button><button data-act="stockAdjust">Ajuster un stock</button><button data-act="go" data-v="movements">Mouvements de stock</button></div>
     ${db.products.length ? `<table><tr><th>Réf.</th><th>Article</th><th>Type</th><th class="n">Prix HT</th><th class="n">TVA</th><th class="n">Coût</th><th class="n">Marque</th><th class="n">Stock</th></tr>
     ${db.products.map(p => `<tr class="click" data-act="productForm" data-id="${p.id}"><td>${esc(p.sku)}</td><td>${esc(p.label)}</td><td>${p.type === 'GOODS' ? 'Marchandise' : 'Service'}</td><td class="n">${eur(p.price)}</td><td class="n">${p.vat} %</td><td class="n">${p.type === 'GOODS' ? eur(p.cost) : ''}</td><td class="n">${p.type === 'GOODS' && p.price ? Math.round((p.price - p.cost) / p.price * 1000) / 10 + ' %' : ''}</td><td class="n ${p.type === 'GOODS' && p.stock <= (p.min || 0) ? 'neg' : ''}">${p.type === 'GOODS' ? p.stock : ''}</td></tr>`).join('')}</table>`
       : '<div class="empty">Créez vos articles et services vendus ou achetés.</div>'}`;
@@ -91,20 +110,26 @@ const views = {
     const s = acc => (bal.find(b => b.acc === acc) || { solde: 0 }).solde;
     const pays = [...db.payments].sort((a, b) => b.date.localeCompare(a.date));
     return `<h1>Trésorerie</h1><p class="sub">Encaissements et décaissements enregistrés depuis les factures.</p>
+    <div class="bar"><button data-act="go" data-v="reconcile" class="primary">Rapprochement bancaire</button><button data-act="tool" data-t="forecast">Prévisionnel à 90 jours</button></div>
     <div class="cards"><div class="card"><div class="k">Banque 512</div><div class="v">${eur(s('512000'))}</div></div><div class="card"><div class="k">Caisse 530</div><div class="v">${eur(s('530000'))}</div></div>
     <div class="card"><div class="k">Clients 411</div><div class="v">${eur(s('411000'))}</div></div><div class="card"><div class="k">Fournisseurs 401</div><div class="v">${eur(-s('401000'))}</div></div></div>
     <h2>Règlements</h2>
-    ${pays.length ? `<table><tr><th>Date</th><th>Pièce</th><th>Tiers</th><th>Mode</th><th class="n">Montant</th></tr>${pays.map(p => { const d = db.docs.find(x => x.id === p.docId); const out = (d.kind === 'PURCHASE') !== (d.type === 'CREDIT'); return `<tr><td>${fdate(p.date)}</td><td>${d.number}</td><td>${esc(tierName(d.tierId))}</td><td>${METHOD[p.method]}</td><td class="n ${out ? 'neg' : 'pos'}">${out ? '−' : '+'}${eur(p.amount)}</td></tr>`; }).join('')}</table>` : '<div class="empty">Aucun règlement. Ouvrez une facture émise et cliquez « Enregistrer un règlement ».</div>'}`;
+    ${pays.length ? `<table><tr><th>Date</th><th>Pièce</th><th>Tiers</th><th>Mode</th><th class="n">Montant</th></tr>${pays.map(p => { const d = db.docs.find(x => x.id === p.docId); const out = (d.kind === 'PURCHASE') !== (d.type === 'CREDIT'); return `<tr class="click" data-act="docForm" data-id="${d.id}"><td>${fdate(p.date)}</td><td>${d.number}</td><td>${esc(tierName(d.tierId))}</td><td>${METHOD[p.method]}</td><td class="n ${out ? 'neg' : 'pos'}">${out ? '−' : '+'}${eur(p.amount)}</td></tr>`; }).join('')}</table>` : '<div class="empty">Aucun règlement. Ouvrez une facture émise et cliquez « Enregistrer un règlement ».</div>'}`;
   },
 
   journal() {
-    const j = param.j || '';
-    const list = db.entries.filter(e => !j || e.journal === j).slice().reverse();
-    return `<h1>Écritures comptables</h1><p class="sub">Générées automatiquement par les factures et règlements. Une écriture validée ne se modifie pas : corrigez par une écriture inverse.</p>
+    const j = param.j || '', q = (param.q || '').toLowerCase();
+    const list = db.entries.filter(e => (!j || e.journal === j) && (!param.focus || e.id === param.focus) && (!q || (e.ref + ' ' + e.label + ' ' + e.lines.map(l => l.acc).join(' ')).toLowerCase().includes(q))).slice().reverse().slice(0, param.all ? Infinity : 300);
+    const piece = e => { const d = db.docs.find(x => x.id === e.src); return d ? `<button class="link" data-act="docForm" data-id="${d.id}" title="Ouvrir la pièce justificative">${esc(e.ref)} ↗</button>` : esc(e.ref); };
+    const balanced = e => e.lines.reduce((s, l) => s + l.debit - l.credit, 0) === 0;
+    return `<h1>Écritures comptables</h1><p class="sub">Générées automatiquement par les factures et règlements. Une écriture validée ne se modifie pas : corrigez par une écriture inverse. Cliquez une pièce pour ouvrir le document d'origine.</p>
     <div class="bar"><select id="jf" style="max-width:220px"><option value="">Tous les journaux</option>${Object.entries(L.JOURNALS).map(([k, v]) => `<option value="${k}" ${k === j ? 'selected' : ''}>${k} · ${v}</option>`).join('')}</select>
+      <input id="jq" placeholder="Pièce, libellé ou compte…" value="${esc(param.q || '')}" style="max-width:240px">
+      ${param.focus ? '<button data-act="go" data-v="journal">Voir toutes les écritures</button>' : ''}
       <span class="grow"></span><button data-act="odForm" class="primary">Saisie manuelle (OD)</button></div>
     ${list.length ? `<table><tr><th>N°</th><th>Jnl</th><th>Date</th><th>Pièce</th><th>Compte</th><th>Libellé</th><th class="n">Débit</th><th class="n">Crédit</th></tr>
-    ${list.map(e => e.lines.map((l, i) => `<tr><td>${i ? '' : e.num}</td><td>${i ? '' : e.journal}</td><td>${i ? '' : fdate(e.date)}</td><td>${i ? '' : esc(e.ref)}</td><td title="${esc(accLabel(l.acc))}">${l.acc}${l.tier ? ' · ' + l.tier : ''}</td><td>${esc(l.label || e.label)}</td><td class="n">${l.debit ? eur(l.debit) : ''}</td><td class="n">${l.credit ? eur(l.credit) : ''}</td></tr>`).join('')).join('')}</table>` : '<div class="empty">Aucune écriture.</div>'}`;
+    ${list.map(e => e.lines.map((l, i) => `<tr class="${balanced(e) ? '' : 'unbalanced'}"><td>${i ? '' : e.num}</td><td>${i ? '' : e.journal}</td><td>${i ? '' : fdate(e.date)}</td><td>${i ? '' : piece(e)}</td><td title="${esc(accLabel(l.acc))}"><button class="link" data-act="ledger" data-acc="${l.acc}">${l.acc}</button>${l.tier ? ' · ' + l.tier : ''}</td><td>${esc(l.label || e.label)}</td><td class="n">${l.debit ? eur(l.debit) : ''}</td><td class="n">${l.credit ? eur(l.credit) : ''}</td></tr>`).join('')).join('')}</table>
+    ${!param.all && db.entries.length > 300 && !param.focus ? '<div class="bar" style="margin-top:10px"><button data-act="journalAll">Afficher toutes les écritures</button></div>' : ''}` : '<div class="empty">Aucune écriture.</div>'}`;
   },
 
   balance() {
@@ -144,19 +169,7 @@ const views = {
     </div>`;
   },
 
-  vat() {
-    const m = today().slice(0, 7);
-    const from = param.from ?? m + '-01', to = param.to ?? today();
-    const v = L.vat(db, from, to);
-    const done = db.entries.filter(e => e.src === 'VAT');
-    return `<h1>TVA</h1><p class="sub">TVA sur les débits (à la facture). Reportez ces montants sur votre CA3 (impots.gouv.fr), puis passez l'écriture de liquidation.</p>
-    <div class="bar">${period(from, to)}</div>
-    <div class="cards"><div class="card"><div class="k">TVA collectée (ligne 16)</div><div class="v">${eur(v.collectee)}</div></div>
-    <div class="card"><div class="k">TVA déductible (ligne 20)</div><div class="v">${eur(v.deductible)}</div></div>
-    <div class="card"><div class="k">${v.net >= 0 ? 'TVA nette due (ligne 28)' : 'Crédit de TVA (ligne 25)'}</div><div class="v">${eur(Math.abs(v.net))}</div></div></div>
-    <div class="bar" style="margin-top:16px"><button class="primary" data-act="settleVat">Passer l'écriture de liquidation</button></div>
-    <h2>Liquidations passées</h2>${done.length ? `<table><tr><th>Date</th><th>Libellé</th></tr>${done.map(e => `<tr><td>${fdate(e.date)}</td><td>${esc(e.label)}</td></tr>`).join('')}</table>` : '<div class="empty">Aucune.</div>'}`;
-  },
+  // TVA : voir links.js
 
   settings() {
     const c = db.company;
@@ -172,7 +185,7 @@ const views = {
       <label>&nbsp;<button class="primary">Enregistrer</button></label>
     </form></div>
     <h2>Exports légaux et sauvegarde</h2>
-    <div class="bar"><button data-act="exportFec" class="primary">Exporter le FEC</button><button data-act="backup">Sauvegarder le dossier (.json)</button><button data-act="restore">Restaurer une sauvegarde</button><button data-act="demo">Charger la démo</button><button data-act="reset" class="danger">Effacer toutes les données</button></div>
+    <div class="bar"><button data-act="exportFec" class="primary">Exporter le FEC</button><button data-act="backup">Sauvegarder le dossier (.json)</button><button data-act="restore">Restaurer une sauvegarde</button><button data-act="go" data-v="backups">Historique des sauvegardes</button><button data-act="demo">Charger la démo</button><button data-act="reset" class="danger">Effacer toutes les données</button></div>
     <h2>Plan comptable</h2>
     <div class="bar"><button data-act="accountForm">Ajouter un compte</button></div>
     <table><tr><th>Compte</th><th>Libellé</th></tr>${db.accounts.slice().sort((a, b) => a.num.localeCompare(b.num)).map(a => `<tr><td>${a.num}</td><td>${esc(a.label)}</td></tr>`).join('')}</table>`;
@@ -212,6 +225,25 @@ function modal(html, submit) {
 }
 const closeModal = () => $('#modal').close();
 const fd = form => Object.fromEntries(new FormData(form));
+
+// Remplace prompt() (absent d'Electron) : petite fenêtre de saisie, renvoie les valeurs ou null si annulé
+function ask(title, fields, okLabel = 'Valider') {
+  return new Promise(resolve => {
+    let done = false;
+    modal(`<h3>${esc(title)}</h3><div class="grid">${fields.map(f => f.options
+      ? `<label>${esc(f.label)}<select name="${f.name}">${f.options.map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(f.value) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`
+      : `<label>${esc(f.label)}<input name="${f.name}" type="${f.type || 'text'}" value="${esc(f.value ?? '')}" ${f.required === false ? '' : 'required'} ${f.pattern ? `pattern="${f.pattern}"` : ''}></label>`).join('')}</div>
+      <div class="actions"><button type="button" data-act="close">Annuler</button><button class="primary">${esc(okLabel)}</button></div>`,
+    v => { done = true; resolve(v); });
+    $('#modal').addEventListener('close', () => { if (!done) resolve(null); }, { once: true });
+  });
+}
+
+// Copie de sécurité automatique avant toute opération qui remplace le dossier
+async function safetySnapshot(label) {
+  try { await window.api.snapshot(Store.envelope(db, APP_VERSION), label); return true; }
+  catch (e) { return confirm('La copie de sécurité automatique a échoué (' + e.message + '). Continuer quand même ?'); }
+}
 
 function tierForm({ id, type }) {
   const t = db.tiers.find(x => x.id === id) || { type, name: '', siren: '', vatNumber: '', email: '', address: '', terms: 30 };
@@ -256,10 +288,11 @@ function stockAdjust() {
   if (!goods.length) return toast('Aucune marchandise', true);
   modal(`<h3>Ajuster un stock (inventaire)</h3><div class="grid">
     <label>Article<select name="pid">${goods.map(p => `<option value="${p.id}">${esc(p.label)} (stock ${p.stock})</option>`).join('')}</select></label>
-    <label>Quantité réelle comptée<input name="qty" type="number" step="any" required></label></div>
-    <p class="sub">Le stock comptable (compte 37 / 6037) est régularisé à la clôture par une écriture d'inventaire (OD).</p>
+    <label>Quantité réelle comptée<input name="qty" type="number" step="any" min="0" required></label>
+    <label>Motif<select name="reason"><option>Inventaire</option><option>Casse</option><option>Vol ou perte</option><option>Erreur de saisie</option></select></label></div>
+    <p class="sub">L'écart est enregistré comme mouvement de stock. Le stock comptable (compte 37 / 6037) est régularisé à la clôture par l'écriture d'inventaire de la boîte à outils.</p>
     <div class="actions"><button type="button" data-act="close">Annuler</button><button class="primary">Valider</button></div>`,
-  v => mutate(() => { db.products.find(p => p.id === v.pid).stock = num(v.qty); }));
+  v => mutate(() => { if (!L.adjustStock(db, v.pid, num(v.qty), today(), v.reason)) toast('Stock déjà à cette quantité : aucun mouvement'); }));
 }
 
 function accountForm() {
@@ -274,10 +307,14 @@ function newDoc({ kind, type }) {
   docForm({ doc: { id: '', kind, type, status: 'DRAFT', date: today(), due: addDays(today(), tiers[0].terms ?? 30), tierId: tiers[0].id, lines: [], globalDisc: 0, ref: '', notes: '' } });
 }
 
-function lineRow(l, editable) {
+// Comptes proposés pour une ligne : produits (7) en vente, charges et immobilisations (6, 2) en achat
+const lineAccounts = kind => kind === 'SALE' ? /^7/ : /^[26]/;
+function lineRow(l, editable, kind = ($('#modalForm')._doc || {}).kind) {
   const dis = editable ? '' : 'disabled';
-  return `<tr><td><select name="productId" ${dis}><option value="">— libre —</option>${db.products.map(p => `<option value="${p.id}" ${p.id === l.productId ? 'selected' : ''}>${esc(p.sku)} · ${esc(p.label)}</option>`).join('')}</select></td>
-  <td><input name="label" value="${esc(l.label)}" ${dis}></td><td style="width:80px"><input name="qty" value="${l.qty ?? 1}" ${dis}></td>
+  return `<tr><td><select name="productId" ${dis} aria-label="Article"><option value="">— libre —</option>${db.products.map(p => `<option value="${p.id}" ${p.id === l.productId ? 'selected' : ''}>${esc(p.sku)} · ${esc(p.label)}</option>`).join('')}</select></td>
+  <td><input name="label" value="${esc(l.label)}" ${dis} aria-label="Désignation"></td>
+  <td style="width:150px"><select name="acc" ${dis} aria-label="Compte comptable" title="${l.accRule ? 'Affecté par la règle « ' + esc(l.accRule) + ' »' : 'Compte comptable de la ligne'}"><option value="">Automatique</option>${accOptions(l.acc, lineAccounts(kind))}</select></td>
+  <td style="width:80px"><input name="qty" value="${l.qty ?? 1}" ${dis}></td>
   <td style="width:110px"><input name="price" value="${((l.price || 0) / 100).toFixed(2).replace('.', ',')}" ${dis}></td>
   <td style="width:70px"><input name="disc" value="${l.disc || 0}" ${dis}></td>
   <td style="width:80px"><select name="vat" ${dis}>${[20, 10, 5.5, 2.1, 0].map(r => `<option ${r === (l.vat ?? 20) ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
@@ -288,8 +325,22 @@ function lineRow(l, editable) {
 function readLines(form) {
   return [...form.querySelectorAll('#lines tr')].map(tr => {
     const g = n => tr.querySelector(`[name=${n}]`).value;
-    return { productId: g('productId'), label: g('label'), qty: num(g('qty')), price: parseEur(g('price')), disc: num(g('disc') || 0), vat: num(g('vat')) };
+    const l = { productId: g('productId'), label: g('label'), qty: num(g('qty')), price: parseEur(g('price')), disc: num(g('disc') || 0), vat: num(g('vat')) };
+    if (g('acc')) l.acc = g('acc');
+    if (l.qty <= 0) throw new Error('Quantité invalide sur la ligne « ' + (l.label || '?') + ' »');
+    if (l.price < 0) throw new Error('Prix négatif : utilisez un avoir');
+    if (l.disc < 0 || l.disc > 100) throw new Error('Remise entre 0 et 100 %');
+    return l;
   }).filter(l => l.label || l.productId);
+}
+
+// Documents reliés (devis -> commande -> facture -> avoir), cliquables
+function linksPanel(d) {
+  if (!d.id) return '';
+  const { up, down } = L.links(db, d.id);
+  if (!up.length && !down.length) return '';
+  const item = x => `<button type="button" class="chip-btn" data-act="docForm" data-id="${x.id}">${TYPE[x.type]} ${esc(x.number || 'brouillon')}</button>`;
+  return `<div class="doc-links"><b>Documents liés :</b> ${up.map(item).join(' → ')}${up.length ? ' → ' : ''}<span class="chip">${TYPE[d.type]} ${esc(d.number || 'brouillon')}</span>${down.length ? ' → ' + down.map(item).join(' · ') : ''}</div>`;
 }
 
 function docForm({ id, doc }) {
@@ -307,8 +358,9 @@ function docForm({ id, doc }) {
       <label>Remise globale (%)<input name="globalDisc" value="${d.globalDisc || 0}" ${editable ? '' : 'disabled'}></label>
       ${d.kind === 'PURCHASE' ? `<label>N° facture fournisseur<input name="ref" value="${esc(d.ref)}" ${editable ? '' : 'disabled'}></label>` : ''}
     </div>
-    <table><thead><tr><th>Article</th><th>Désignation</th><th>Qté</th><th>PU HT €</th><th>Rem. %</th><th>TVA %</th><th class="n">Total HT</th><th></th></tr></thead>
-    <tbody id="lines">${(d.lines.length ? d.lines : editable ? [{}] : []).map(l => lineRow(l, editable)).join('')}</tbody></table>
+    ${linksPanel(d)}
+    <table><thead><tr><th>Article</th><th>Désignation</th><th>Compte</th><th>Qté</th><th>PU HT €</th><th>Rem. %</th><th>TVA %</th><th class="n">Total HT</th><th></th></tr></thead>
+    <tbody id="lines">${(d.lines.length ? d.lines : editable ? [{}] : []).map(l => lineRow(l, editable, d.kind)).join('')}</tbody></table>
     ${editable ? '<div><button type="button" data-act="addLine">+ Ajouter une ligne</button></div>' : ''}
     <div class="totals" id="tot"><div><span>Total HT</span><span>${eur(t.ht)}</span></div><div><span>TVA</span><span>${eur(t.tva)}</span></div><div class="big"><span>Total TTC</span><span>${eur(t.ttc)}</span></div>
     ${d.totals ? `<div><span>Déjà réglé</span><span>${eur(d.paid)}</span></div><div><span>Reste dû</span><span>${eur(remaining)}</span></div>` : ''}</div>
@@ -317,7 +369,9 @@ function docForm({ id, doc }) {
     <div class="actions">
       ${d.id && editable ? '<button type="button" class="danger" data-act="delDoc">Supprimer le brouillon</button>' : ''}<span style="flex:1"></span>
       ${d.id ? '<button type="button" data-act="printDoc">PDF</button>' : ''}
-      ${d.id && ['QUOTE', 'ORDER'].includes(d.type) && d.status === 'DRAFT' ? '<button type="button" data-act="convert">Transformer en facture</button>' : ''}
+      ${d.id && d.type === 'QUOTE' && d.status === 'DRAFT' ? '<button type="button" data-act="convert" data-to="ORDER">Transformer en commande</button>' : ''}
+      ${d.id && ['QUOTE', 'ORDER'].includes(d.type) && d.status === 'DRAFT' ? '<button type="button" data-act="convert" data-to="INVOICE">Transformer en facture</button>' : ''}
+      ${d.entryId ? `<button type="button" data-act="showEntry" data-id="${d.entryId}">Écriture</button>` : ''}
       ${d.status === 'ISSUED' ? '<button type="button" data-act="payForm">Enregistrer un règlement</button>' : ''}
       ${d.status !== 'DRAFT' && d.type === 'INVOICE' ? '<button type="button" data-act="creditFrom">Créer un avoir</button>' : ''}
       <button type="button" data-act="close">Fermer</button>
@@ -330,9 +384,27 @@ function docForm({ id, doc }) {
 
 function storeDoc(d) {
   const f = $('#modalForm'), v = fd(f);
-  Object.assign(d, { tierId: v.tierId, date: v.date, due: v.due, globalDisc: num(v.globalDisc || 0), ref: v.ref || '', notes: v.notes || '', lines: readLines(f) });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date)) throw new Error('Date invalide');
+  const gd = num(v.globalDisc || 0);
+  if (gd < 0 || gd > 100) throw new Error('Remise globale entre 0 et 100 %');
+  Object.assign(d, { tierId: v.tierId, date: v.date, due: v.due, globalDisc: gd, ref: (v.ref || '').slice(0, 60), notes: (v.notes || '').slice(0, 2000), lines: readLines(f) });
   if (!d.id) { d.id = L.uid(); db.docs.push(d); }
+  if (!d.number) d.number = L.draftNumber(db, d);
   return d;
+}
+
+// Avant émission : comptes affectés par les règles (tracés) et contrôle du stock disponible
+function prepareIssue(d) {
+  for (const l of d.lines) if (!l.acc && !l.productId) {
+    const r = Rules.assign(db, l.label, d.tierId);
+    if (r) { l.acc = r.account; l.accRule = r.contains; Rules.log(db, 'ok', 'Affectation', `« ${l.label} » → ${r.account} (règle « ${r.contains} »)`); }
+  }
+  if (d.kind === 'SALE' && d.type === 'INVOICE') {
+    const need = {};
+    for (const l of d.lines) { const p = db.products.find(x => x.id === l.productId); if (p && p.type === 'GOODS') need[p.id] = (need[p.id] || 0) + l.qty; }
+    const short = Object.entries(need).map(([id, q]) => ({ p: db.products.find(x => x.id === id), q })).filter(x => x.q > x.p.stock);
+    if (short.length && !confirm('Stock insuffisant :\n' + short.map(x => `- ${x.p.label} : ${x.q} demandé(s), ${x.p.stock} en stock`).join('\n') + '\n\nÉmettre quand même (le stock deviendra négatif) ?')) throw new Error('Émission annulée : stock insuffisant');
+  }
 }
 
 function payForm() {
@@ -346,7 +418,13 @@ function payForm() {
   v => mutate(() => {
     const amount = parseEur(v.amount);
     if (v.method === 'CASH' && d.kind === 'SALE' && amount > 100000) throw new Error('Paiement en espèces limité à 1 000 € (particulier résident)');
-    L.pay(db, d.id, v.date, amount, v.method);
+    try { L.pay(db, d.id, v.date, amount, v.method); }
+    catch (e) {
+      // doublon probable : l'utilisateur confirme explicitement s'il s'agit bien d'un second paiement
+      if (e.code !== 'DUPLICATE' || !confirm(e.message + '.\n\nS\'agit-il vraiment d\'un second paiement distinct ?')) throw e;
+      L.pay(db, d.id, v.date, amount, v.method, { allowDuplicate: true });
+      Rules.log(db, 'duplicate', 'Règlements', `Règlement identique confirmé manuellement sur ${d.number}`);
+    }
   }));
 }
 
@@ -403,19 +481,18 @@ const actions = {
   async issueDoc() {
     const d = $('#modalForm')._doc;
     if (!confirm('Une fois émis, le document est définitif (numéro attribué, écriture comptable passée). Continuer ?')) return;
-    await mutate(() => { storeDoc(d); L.issue(db, d); });
+    await mutate(() => { storeDoc(d); prepareIssue(d); L.issue(db, d); });
     closeModal(); toast(`${d.number} émis et comptabilisé`);
   },
-  async convert() {
-    const q = $('#modalForm')._doc;
-    let inv;
-    await mutate(() => {
-      storeDoc(q); q.status = 'ACCEPTED';
-      inv = { ...JSON.parse(JSON.stringify(q)), id: L.uid(), type: 'INVOICE', status: 'DRAFT', number: '', date: today(), origin: q.id };
-      db.docs.push(inv);
-    });
-    docForm({ id: inv.id });
+  async convert({ to }) {
+    const src = $('#modalForm')._doc;
+    let doc;
+    await mutate(() => { storeDoc(src); doc = L.convert(db, src.id, to, today()); });
+    docForm({ id: doc.id });
+    toast(`${TYPE[src.type]} ${src.number} transformé en ${TYPE[to].toLowerCase()}`);
   },
+  showEntry: ({ id }) => { closeModal(); go('journal', { focus: id }); },
+  journalAll: () => go('journal', { ...param, all: true }),
   async creditFrom() {
     const src = $('#modalForm')._doc;
     let av;
@@ -439,8 +516,10 @@ const actions = {
   },
   async exportFec() {
     if (!db.company.siren) return toast('Renseignez le SIREN avant d\'exporter le FEC', true);
-    const y = prompt('Exercice (année) à exporter :', today().slice(0, 4));
-    if (!y) return;
+    if (db.demo && !confirm('Ce dossier contient des données de démonstration fictives. Exporter quand même un FEC ?')) return;
+    const r = await ask('Exporter le FEC', [{ name: 'y', label: 'Exercice (année)', value: today().slice(0, 4), pattern: '\\d{4}' }], 'Exporter');
+    if (!r) return;
+    const y = r.y;
     const p = await window.api.exportFile(`${db.company.siren}FEC${y}1231.txt`, L.fec(db, y + '-01-01', y + '-12-31'), 'latin1');
     if (p) toast('FEC exporté');
   },
@@ -453,26 +532,35 @@ const actions = {
     if (await window.api.exportFile('compte-de-resultat.csv', csv([['Compte', 'Libellé', 'Montant'], ...inc.lignes.map(b => [b.acc, b.label, /^7/.test(b.acc) ? -b.solde : b.solde]), ['', 'Résultat', inc.resultat]]))) toast('Export réalisé');
   },
   async demo() {
-    if ((db.docs.length || db.entries.length) && !confirm('Remplacer le dossier actuel par la boutique de démonstration ? Faites une sauvegarde avant si besoin.')) return;
-    db = window.demoData(); await save(); go('dashboard'); toast('Démo chargée : Elina Studio');
+    if ((db.docs.length || db.entries.length) && !confirm('Remplacer le dossier actuel par la boutique de démonstration ? Une copie de sécurité du dossier actuel sera faite automatiquement.')) return;
+    if ((db.docs.length || db.entries.length) && !await safetySnapshot('Avant chargement de la démo')) return;
+    db = window.demoData(); db.demo = true; await save(); go('dashboard'); toast('Démo chargée : Elina Studio (données fictives)');
   },
   async reset() {
-    if (!confirm('Effacer définitivement toutes les données de ce dossier ?')) return;
+    if (!confirm('Effacer toutes les données de ce dossier ? Une copie de sécurité sera faite automatiquement et restera dans l\'historique des sauvegardes.')) return;
+    if (!await safetySnapshot('Avant effacement du dossier')) return;
     db = L.empty(); await save(); go('dashboard'); toast('Dossier vide');
   },
-  async backup() { if (await window.api.exportFile(`compta-${today()}.json`, JSON.stringify(db, null, 1))) toast('Sauvegarde créée'); },
-  async restore() {
-    const txt = await window.api.importFile();
-    if (!txt) return;
-    const data = JSON.parse(txt);
-    if (!data.accounts || !data.entries) return toast('Fichier de sauvegarde invalide', true);
-    if (!confirm('Remplacer le dossier actuel par cette sauvegarde ?')) return;
-    db = data; await save(); render(); toast('Dossier restauré');
-  }
+  async backup() { if (await window.api.exportFile(`compta-elina-${today()}.json`, Store.envelope(db, APP_VERSION))) { Rules.log(db, 'ok', 'Sauvegarde', 'Sauvegarde manuelle exportée'); await save(); toast('Sauvegarde créée'); } },
+  async restore() { const txt = await window.api.importFile(); if (txt) await restoreFrom(txt, 'fichier importé'); },
+  async restoreSnapshot({ id }) { const txt = await window.api.readSnapshot(id); if (!txt) return toast('Sauvegarde introuvable', true); await restoreFrom(txt, 'historique'); }
 };
 
+// Restauration : lecture et validation complètes AVANT de toucher au dossier actuel, puis copie de sécurité
+async function restoreFrom(txt, source) {
+  let r;
+  try { r = Store.parseBackup(txt); } catch (e) { return toast(e.message.split('\n')[0], true), alert(e.message); }
+  const m = r.db, info = `${m.company.name} · ${m.docs.length} documents · ${m.entries.length} écritures${r.meta.createdAt ? ' · sauvegardé le ' + fdate(r.meta.createdAt.slice(0, 10)) : ''}${r.meta.legacy ? ' · ancien format, converti' : ''}${m.demo ? ' · DONNÉES DE DÉMONSTRATION' : ''}`;
+  if (!confirm(`Remplacer le dossier actuel par cette sauvegarde (${source}) ?\n\n${info}${r.warnings.length ? '\n\nAvertissements :\n- ' + r.warnings.join('\n- ') : ''}\n\nUne copie de sécurité du dossier actuel sera faite avant.`)) return;
+  if (!await safetySnapshot('Avant restauration')) return;
+  db = m;
+  if (r.extracted.dash && !prefs.dashboards.length) window.legacyDash = r.extracted.dash;
+  Rules.log(db, 'ok', 'Restauration', `Dossier restauré depuis ${source}`);
+  await save(); go('dashboard'); toast('Dossier restauré');
+}
+
 document.addEventListener('click', e => {
-  const nav = e.target.closest('nav a'); if (nav) return go(nav.dataset.view);
+  const nav = e.target.closest('nav a'); if (nav) return go(nav.dataset.view, nav.dataset.t ? { t: nav.dataset.t } : {});
   const el = e.target.closest('[data-act]'); if (!el) return;
   e.preventDefault();
   Promise.resolve(actions[el.dataset.act](el.dataset, el)).catch(() => {});
@@ -493,7 +581,8 @@ document.addEventListener('submit', e => {
 document.addEventListener('change', e => {
   const id = e.target.id;
   if (id === 'q') return go('tiers', { q: e.target.value });
-  if (id === 'jf') return go('journal', { j: e.target.value });
+  if (id === 'jf') return go('journal', { ...param, j: e.target.value, focus: '' });
+  if (id === 'jq') return go('journal', { ...param, q: e.target.value, focus: '' });
   if (id === 'df') return go(view, { f: e.target.value });
   if (id === 'pfrom' || id === 'pto') return go(view, { ...param, from: $('#pfrom').value, to: $('#pto').value });
   if (e.target.name === 'productId') {
@@ -514,4 +603,21 @@ document.addEventListener('change', e => {
 });
 
 // après le chargement de tous les scripts (dashboard.js, tools.js… complètent les vues)
-window.addEventListener('DOMContentLoaded', () => window.api.load().then(txt => { db = txt ? JSON.parse(txt) : L.empty(); render(); }));
+// Chargement : un fichier illisible n'est jamais écrasé, on propose l'historique des sauvegardes
+window.addEventListener('DOMContentLoaded', async () => {
+  const txt = await window.api.load();
+  try {
+    db = txt ? JSON.parse(txt) : L.empty();
+    const before = db.version;
+    const { extracted } = Store.migrate(db);
+    if (extracted.dash && !prefs.dashboards.length) window.legacyDash = extracted.dash;
+    if (before !== db.version) { Rules.log(db, 'ok', 'Migration', `Dossier converti au format ${db.version}`); await save(); }
+  } catch (e) {
+    db = null;
+    $('#main').innerHTML = `<h1>Dossier illisible</h1><p class="sub">Le fichier de données n'a pas pu être lu (${esc(e.message)}). Il n'a pas été modifié.</p>
+      <div class="bar"><button class="primary" data-act="restore">Restaurer un fichier de sauvegarde</button><button data-act="go" data-v="backups">Voir l'historique des sauvegardes</button></div>`;
+    return;
+  }
+  render();
+  window.dispatchEvent(new Event('compta:ready'));
+});

@@ -1,14 +1,14 @@
 /* ---------- Boîte à outils : catégories, contrôles, calendrier ---------- */
-h2.cat { display: flex; align-items: center; gap: 10px; margin: 26px 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+h2.cat { display: flex; align-items: center; gap: 10px; margin: 26px 0 12px; font-size: calc(var(--fs) * 13 / 14); text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
 h2.cat::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
-h2.cat .k { order: 2; font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); letter-spacing: 0; }
+h2.cat .k { order: 2; font-size: calc(var(--fs) * 11 / 14); padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-ink); letter-spacing: 0; }
 
 .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.checks li { display: flex; gap: 12px; align-items: flex-start; padding: 10px 8px; border-radius: 10px; animation: rise .35s var(--ease) both; animation-delay: calc(var(--i) * 45ms); }
+.checks li { display: flex; gap: 12px; align-items: flex-start; padding: 10px 8px; border-radius: var(--r-sm); animation: rise .35s var(--ease) both; animation-delay: calc(var(--i) * 45ms); }
 .checks li:hover { background: var(--bg); }
 .checks li div { display: grid; gap: 2px; }
 .checks small { color: var(--muted); }
-.checks .dot { flex: none; width: 20px; height: 20px; border-radius: 50%; margin-top: 1px; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; }
+.checks .dot { flex: none; width: 20px; height: 20px; border-radius: 50%; margin-top: 1px; display: grid; place-items: center; font-size: calc(var(--fs) * 12 / 14); font-weight: 700; color: #fff; }
 .checks .ok .dot { background: var(--good); } .checks .ok .dot::after { content: "✓"; }
 .checks .warn .dot { background: var(--warn); } .checks .warn .dot::after { content: "!"; }
 .checks .bad .dot { background: var(--bad); animation: pulse 2s ease-in-out infinite; } .checks .bad .dot::after { content: "✕"; }
@@ -16,12 +16,12 @@ h2.cat .k { order: 2; font-size: 11px; padding: 1px 8px; border-radius: 99px; ba
 .timeline { position: relative; display: grid; gap: 10px; padding-left: 4px; }
 .timeline::before { content: ""; position: absolute; left: 39px; top: 8px; bottom: 8px; width: 2px; background: linear-gradient(var(--accent), transparent); border-radius: 2px; }
 .tl { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: center; animation: rise .4s var(--ease) both; animation-delay: calc(var(--i) * 50ms); }
-.tl-date { position: relative; z-index: 1; text-align: center; padding: 6px 0; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
-.tl-date b { display: block; font-size: 15px; } .tl-date small { color: var(--muted); font-size: 11px; }
-.tl-body { padding: 12px 16px; border-radius: 12px; background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(12px); display: grid; gap: 2px; }
+.tl-date { position: relative; z-index: 1; text-align: center; padding: 6px 0; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.tl-date b { display: block; font-size: calc(var(--fs) * 15 / 14); } .tl-date small { color: var(--muted); font-size: calc(var(--fs) * 11 / 14); }
+.tl-body { padding: 12px 16px; border-radius: var(--radius); background: var(--glass); border: 1px solid var(--glass-line); backdrop-filter: blur(var(--blur)); display: grid; gap: 2px; }
 .tl-body small { color: var(--muted); }
 .tl.soon .tl-date { background: var(--grad); color: #fff; border-color: transparent; } .tl.soon .tl-date small { color: rgba(255,255,255,.85); }
 .tl.soon .tl-body small { color: var(--bad); font-weight: 600; }
 
 #g-out { min-height: 120px; }
-#g-out h2 { font-size: 13px; margin: 18px 0 6px; color: var(--muted); }
+#g-out h2 { font-size: calc(var(--fs) * 13 / 14); margin: 18px 0 6px; color: var(--muted); }

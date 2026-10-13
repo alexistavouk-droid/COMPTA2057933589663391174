@@ -3,6 +3,10 @@
 .skip:focus { left: 8px; }
 main:focus { outline: none; }
 
+/* Le menu défile dans la barre latérale : logo, recherche et « Personnaliser » restent toujours visibles */
+#nav { min-height: 0; }
+#nav nav { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+
 /* Bouton permanent « Personnaliser » et cloche d'alertes */
 .customize-btn { margin: 10px 4px 12px; display: flex; align-items: center; gap: 8px; justify-content: center; background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
 .customize-btn:hover { border-color: var(--accent); }

@@ -58,7 +58,7 @@ function go(v, p = {}) { view = v; param = p; render(); }
 function render() {
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.dataset.view === view || (view === 'ledger' && a.dataset.view === 'balance') || (view === 'tier' && a.dataset.view === 'tiers')));
   if (window.renderNav) renderNav();
-  $('#company').textContent = db ? db.company.name + (db.company.siren ? ' · ' + db.company.siren : '') + (db.demo ? ' · démo' : '') : '';
+  $('#company').textContent = db ? db.company.name + (db.company.siren ? ' · ' + db.company.siren : '') : '';
   document.body.classList.toggle('is-demo', !!(db && db.demo));
   if (!db && view !== 'backups') return;
   $('#main').innerHTML = views[view]();

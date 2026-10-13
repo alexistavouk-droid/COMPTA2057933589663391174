@@ -1,0 +1,28 @@
+name: Installeur Windows
+# Construit l'installeur NSIS sur une machine Windows propre et le publie dans une « release » GitHub,
+# uniquement quand une étiquette de version (v2.0.0, v2.1.0…) est poussée. Le site (GitHub Pages) n'est pas concerné.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx electron-builder --win nsis --publish never
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Compta Elina ${{ github.ref_name }}
+          files: dist/Compta-Elina-Setup-*.exe
+          body: |
+            Installeur Windows (10 et 11, 64 bits) de Compta Elina ${{ github.ref_name }}, construit et testé automatiquement à partir du code de cette version.
+            L'installeur n'est pas signé numériquement : au premier lancement, Windows SmartScreen demande de cliquer sur « Informations complémentaires » puis « Exécuter quand même ».
+            Manuel : src/manual/Manuel-Compta-Elina.pdf · Site : https://alexistavouk-droid.github.io/COMPTA2057933589663391174/src/

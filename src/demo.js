@@ -9,7 +9,7 @@ window.demoData = function () {
   const iso = (m, d) => new Date(Date.UTC(year, m, d)).toISOString().slice(0, 10);
   const plus = (date, n) => { const x = new Date(date); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 
-  Object.assign(db.company, { name: 'Elina Studio', siren: '912345678', vatNumber: 'FR12912345678', address: '12 rue des Arts, 75011 Paris', email: 'bonjour@elina-studio.fr', iban: 'FR76 3000 6000 0112 3456 7890 189' });
+  Object.assign(db.company, { name: 'Elina Studio', siren: '912345678', vatNumber: 'FR12912345678', address: '12 rue des Arts, 75011 Paris', email: 'bonjour@elina-studio.fr', iban: 'FR76 0000 0000 0000 0000 0000 000' });
   const clients = ['Maison Lumière', 'Atelier Brun', 'Café Olive', 'Hôtel des Lices', 'Sophie Martin', 'Agence Nord', 'Bureau Céleste', 'Lucas Petit']
     .map((name, i) => ({ id: 'c' + i, code: 'C' + String(i + 1).padStart(4, '0'), type: 'C', name, terms: 30, email: '', siren: '', address: 'Paris' }));
   const suppliers = ['Déco Grossiste', 'Lumen Factory', 'Bureau Immo', 'Cloud Tools']
